@@ -6,7 +6,7 @@ authors = ["wheird"]
 description = "a collection of (youkia's) pvz-ol tools."
 
 [features]
-default = ["hack"]
+default = []
 hack = []
 
 [dependencies]

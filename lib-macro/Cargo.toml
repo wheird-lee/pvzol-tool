@@ -1,0 +1,12 @@
+[package]
+name = "lib-macro"
+version = "0.1.0"
+edition = "2021"
+authors = ["wheird"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1.0", features = ["full"] }
+quote = "1.0"

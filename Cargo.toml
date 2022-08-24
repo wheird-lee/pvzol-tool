@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "./lib",
+    "./lib-macro",
+    "./tools",
+]

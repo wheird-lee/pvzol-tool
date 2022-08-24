@@ -1,0 +1,17 @@
+[package]
+name = "pvzol-tools"
+version = "0.1.0"
+edition = "2021"
+authors = ["wheird"]
+description = "a collection of (youkia's) pvz-ol tools."
+
+[features]
+default = ["hack"]
+hack = []
+
+[dependencies]
+amf = "1.0.0"
+clap = { version = "3.2.17", features = ["derive"] }
+lib = { package = "pvzol-tools-lib", version = "*", path = "../lib"}
+reqwest = {version = "0.11.11", features = ["json","cookies"]}
+tokio = { version = "1", features = [ "full" ]}

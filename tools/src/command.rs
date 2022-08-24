@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use clap::{Subcommand};
 use lib::{game::sys::Quality, Client, Result};
 
@@ -10,6 +12,34 @@ macro_rules! warn_ignored {
 #[derive(Subcommand)]
 #[non_exhaustive]
 pub(crate) enum Command {
+    /// 更新仓库数据
+    Update {
+
+    },
+
+    /// 列出数据
+    List {
+        /// 列出仓库中的所有物品 (植物,道具,...)
+        #[clap(short = 'A', long, action)]
+        all: bool,
+
+        /// 列出所有植物
+        #[clap(short, long = "plant", action)]
+        plants: bool,
+
+        /// 列出所有宝箱
+        #[clap(short = 'B', long = "box", action)]
+        boxes: bool,
+
+        /// 列出所有书籍
+        #[clap(short, long = "book", action)]
+        books: bool,
+
+        /// 数据显示顺序
+        #[clap(long, value_parser)]
+        order_by: OrderBy,
+    },
+
     /// 刷新品质
     QualityUp {
         /// 目标品质
@@ -84,10 +114,25 @@ pub(crate) enum HackCommand {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OrderBy {
+    Name,
+    Level,
+}
+
 impl Command {
     pub async fn invoke_on(self, client: &Client, repeat: Option<usize>) -> Result<()> {
         let repeat_times = repeat.unwrap_or(1) as usize;
         match self {
+            Command::Update {  } => (),
+            Command::List {
+                plants: _,
+                boxes: _,
+                books: _,
+                ..
+            } => {
+                ()
+            }
             Command::QualityUp {
                 plant_id: plant_ids,
                 until
@@ -156,5 +201,29 @@ impl HackCommand {
             },
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for OrderBy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as std::fmt::Debug>::fmt(&self, f)
+    }
+}
+
+impl FromStr for OrderBy {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use OrderBy::*;
+
+        if s.len() > 5 || !s.is_ascii() {
+            return Err(format!("fail to parse `{}` as OrderBy", s));
+        }
+
+        let lower = s.to_ascii_lowercase();
+        match lower.as_str() {
+            "n" | "name" => Ok(Name),
+            "l" | "level" => Ok(Level),
+            _ => Err(format!("fail to parse `{}` as OrderBy", s)),
+        }
     }
 }

@@ -1,7 +1,7 @@
-use lib::{Client, AccountInfo};
+use crate::{AccountInfo, Client, Result, game::user::UserInfo};
 
 #[allow(dead_code)]
-pub async fn load_errw() -> lib::Result<Client> {
+pub async fn load_errw() -> Result<Client> {
     // use std::env::current_dir;
     // println!("{:?}", current_dir().unwrap().as_os_str());
 
@@ -15,7 +15,7 @@ pub async fn load_errw() -> lib::Result<Client> {
 }
 
 #[allow(dead_code)]
-pub async fn load_nmh() -> lib::Result<Client> {
+pub async fn load_nmh() -> Result<Client> {
     let account = AccountInfo::from_file(
         "F:\\下载\\AB全助手 (无需挂级)\\hack\\tools\\data\\nmh-s6.toml"
     ).await?;
@@ -23,4 +23,8 @@ pub async fn load_nmh() -> lib::Result<Client> {
         .account(account)
         .build()?;
     Ok(client)
+}
+
+pub async fn load_user_info() -> Result<UserInfo> {
+    todo!()
 }

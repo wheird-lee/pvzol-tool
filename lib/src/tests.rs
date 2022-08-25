@@ -1,8 +1,10 @@
 
 use std::{path::{PathBuf}, env::current_dir};
 
-use lib::{game::sys::Quality};
-use crate::util::*;
+use crate::{game::sys::Quality};
+use util::*;
+
+mod util;
 
 fn get_current_dir() -> PathBuf {
     if cfg!(debug_assertions) {
@@ -94,7 +96,7 @@ async fn test_fuben_challenge() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-async fn test() {
+async fn test_current_dir() {
     println!("{:?}", get_current_dir());
     // println!("{:?}", current_dir().unwrap().as_os_str())
 }

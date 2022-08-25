@@ -18,10 +18,6 @@ use command::Command;
 use lib::{Client, AccountInfo, Result};
 
 mod command;
-mod util;
-
-#[cfg(test)]
-mod test;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]

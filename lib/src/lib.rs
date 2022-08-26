@@ -45,12 +45,6 @@ impl Client {
         url
     }
 
-    pub(crate) async fn wait_a_moment(&self) -> () {
-        let duration: u64 = rand::thread_rng()
-            .gen_range(800..1400);
-        tokio::time::sleep(Duration::from_millis(duration)).await;
-    }
-
     pub fn server_url(&self) -> &Url {
         &self.server_url
     }
@@ -163,21 +157,22 @@ impl Client {
         mut skill_id: f64,
         until: impl Fn(usize, u32)->bool,
     ) -> Result<()> {
-        'outer: for up in 0.. {
-            for i in 0.. {
+        'outer: for up in 1.. {
+            for i in 1.. {
                 if until(i, up) {
                     break 'outer;
                 }
                 if i != 1 {
-                    self.wait_a_moment().await;
+                    wait_a_moment().await;
                 }
                 let new_skill_id = self.skill_up(plant_id, skill_id).await?;
                 if new_skill_id != skill_id {
-                    println!("try {:-3} : {} -> {} !", i, skill_id, new_skill_id);
+                    println!("\rtry {:-3} : {} -> {} !", i, skill_id, new_skill_id);
                     skill_id = new_skill_id;
                     break;
                 }
-                println!("try {:-3} : {}", i, new_skill_id);
+                print!("\rtry {:-3} : {}", i, new_skill_id);
+                std::io::stdout().flush()?;
             }
         }
         Ok(())
@@ -223,7 +218,7 @@ impl Client {
         let mut pre = None;
         for i in 1.. {
             if i != 1 {
-                self.wait_a_moment().await;
+                wait_a_moment().await;
             }
             let new_quality = self.quality_up(plant_id).await?;
             if pre.is_some() && new_quality != pre.unwrap() {
@@ -275,7 +270,7 @@ impl Client {
     ) -> Result<()> {
         for i in 1..=repeat {
             if i != 1 {
-                self.wait_a_moment().await;
+                wait_a_moment().await;
             }
             self.open_box(box_id, amount).await?;
             
@@ -322,7 +317,7 @@ impl Client {
     ) -> Result<()> {
         for (i, duty_id) in duty_ids.enumerate() {
             if i != 0 {
-                self.wait_a_moment().await;
+                wait_a_moment().await;
                 // tokio::time::sleep(Duration::from_millis(500)).await;
             }
             let res = self.get_duty_reward(duty_id, duty_catogary_id).await;
@@ -425,13 +420,13 @@ impl Client {
         println!("--- current medals: {}", medal);
         for i in 0..times {
             if i != 0 {
-                self.wait_a_moment().await;
+                wait_a_moment().await;
             }
             self.reset_fuben_reward(fuben_id).await?;
             print!("No.{:-3} : reset", i);
             std::io::stdout().flush()?;
             for j in 1.. {
-                self.wait_a_moment().await;
+                wait_a_moment().await;
                 let next = self.get_fuben_award("medal", fuben_id).await?;
                 print!(" : get-{}", j);
                 std::io::stdout().flush()?;
@@ -490,7 +485,7 @@ impl Client {
     ) -> Result<()> {
         for i in 1..=times {
             if i != 1 {
-                self.wait_a_moment().await;
+                wait_a_moment().await;
             }
             let plant_ids = plant_ids.iter().map(ToOwned::to_owned);
             let win = self.challenge_fuben(fuben_id, plant_ids).await?;
@@ -584,18 +579,8 @@ impl ClientBuilder {
     }
 }
 
-// pub struct ClientCookies {
-//     PHPSSID: Option<String>,
-//     pvz: Option<String>,
-//     pvz_youkia: Option<String>,
-//     others: HashMap<String, String>,
-// }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
+pub async fn wait_a_moment() -> () {
+    let duration: u64 = rand::thread_rng()
+        .gen_range(800..1400);
+    tokio::time::sleep(Duration::from_millis(duration)).await;
 }

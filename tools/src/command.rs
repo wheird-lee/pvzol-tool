@@ -5,40 +5,13 @@ use lib::{game::sys::Quality, Client, Result};
 
 macro_rules! warn_ignored {
     ($lit:literal) => {
-        eprintln!("warn: option `{}` is ignored.", $lit);
+        eprintln!("warn: option `{}` is ignored.", $lit)
     };
 }
 
 #[derive(Subcommand)]
 #[non_exhaustive]
 pub(crate) enum Command {
-    /// 更新仓库数据
-    Update {
-
-    },
-
-    /// 列出数据
-    List {
-        /// 列出仓库中的所有物品 (植物,道具,...)
-        #[clap(short = 'A', long, action)]
-        all: bool,
-
-        /// 列出所有植物
-        #[clap(short, long = "plant", action)]
-        plants: bool,
-
-        /// 列出所有宝箱
-        #[clap(short = 'B', long = "box", action)]
-        boxes: bool,
-
-        /// 列出所有书籍
-        #[clap(short, long = "book", action)]
-        books: bool,
-
-        /// 数据显示顺序
-        #[clap(long, value_parser)]
-        order_by: OrderBy,
-    },
 
     /// 刷新品质
     QualityUp {
@@ -122,55 +95,52 @@ pub(crate) enum OrderBy {
 
 impl Command {
     pub async fn invoke_on(self, client: &Client, repeat: Option<usize>) -> Result<()> {
+        use Command::*;
+
         let repeat_times = repeat.unwrap_or(1) as usize;
         match self {
-            Command::Update {  } => (),
-            Command::List {
-                plants: _,
-                boxes: _,
-                books: _,
-                ..
-            } => {
-                ()
-            }
-            Command::QualityUp {
+            QualityUp {
                 plant_id: plant_ids,
                 until
             } => {
-                let until: Box<dyn Fn(usize,Quality)->bool> = match until {
+                let until_fn: Box<dyn Fn(usize,Quality)->bool> = match until {
                     Some(to_quality) => {
-                        eprintln!("warn: options `repeat` is ignored.");
+                        if repeat.is_some() {
+                            warn_ignored!("repeat")
+                        }
                         Box::new(move |_, q| q == to_quality)
                     },
                     None => Box::new(move |i,_| i >= repeat_times),
                 };
                 for plant_id in plant_ids {
-                    client.quality_up_to(plant_id, &until).await?;
+                    client.quality_up_to(plant_id, &until_fn).await?;
                 }
             },
-            Command::SkillUp {
+            SkillUp {
                 plant_id,
                 skill_id,
                 up_level
             } =>{
                 let until: Box<dyn Fn(usize,u32)->bool> = match up_level {
                     Some(up) => {
-                        eprintln!("warn: options `repeat` is ignored.");
+                        if repeat.is_some() {
+                            warn_ignored!("repeat");
+                        }
                         Box::new(move |_, uped| uped == up)
                     },
                     None => Box::new(move |i,_| i >= repeat_times),
                 };
                 client.skill_up_to(plant_id, skill_id, until).await?;
             },
-            Command::Open { box_id, amount } => {
+            Open { box_id, amount } => {
                 let amount = amount.unwrap_or(1);
                 client.open_box_repeat(box_id, amount, repeat_times).await?;
             },
-            Command::Challenge { fuben_id, plant_ids } => {
+            Challenge { fuben_id, plant_ids } => {
                 client.challenge_fuben_repeat(fuben_id, plant_ids, repeat_times).await?;
             },
             #[cfg(feature = "hack")]
-            Command::Hack(hack) => {
+            Hack(hack) => {
                 hack.invoke_on(client, repeat).await?;
             }
         }

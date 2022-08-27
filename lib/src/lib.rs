@@ -157,7 +157,7 @@ impl Client {
         mut skill_id: f64,
         until: impl Fn(usize, u32)->bool,
     ) -> Result<()> {
-        'outer: for up in 1.. {
+        'outer: for up in 0.. {
             for i in 1.. {
                 if until(i, up) {
                     break 'outer;

@@ -2,19 +2,48 @@ use std::{collections::{HashMap}, time::Duration, io::Write};
 
 use crate::amf::{amf0::{array, number, string}, Value, Amf0Value, packet::{Body, Packet, ReadAs}};
 
-use crate::amf::{TryAsAmf0Object, TryAsNumber};
-use game::sys::Quality;
+use crate::amf::{TryAsAmf0Object, TryAsBoolean, TryAsNumber};
+use game::sys::{Quality, ChallengeType, QualityUpType};
 use rand::Rng;
 use reqwest::{header, Url};
 
 pub use account::*;
 
-pub type Result<T,E = Box<dyn std::error::Error>> = std::result::Result<T,E>;
+pub type Result<T,E = ErrorKind> = std::result::Result<T,E>;
 
 pub mod amf;
 pub mod game;
 
 mod account;
+
+#[derive()]
+pub enum ErrorKind {
+    Static(&'static str),
+    Owned(String),
+}
+
+impl From<String> for ErrorKind {
+    fn from(s: String) -> Self {
+        Self::Owned(s)
+    }
+}
+
+impl From<&'static str> for ErrorKind {
+    fn from(s: &'static str) -> Self {
+        Self::Static(s)
+    }
+}
+
+impl std::fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ErrorKind::*;
+        let s = match self {
+            Static(s) => s,
+            Owned(s) => s.as_str(),
+        };
+        s.fmt(f)
+    }
+}
 
 pub struct Client {
     reqwest_client: reqwest::Client,
@@ -22,6 +51,8 @@ pub struct Client {
     server_url: Url,
     cookies: String,
 }
+
+static ERR_PARSE_AMF_OBJ: &'static str = "无法将返回的数据解析为`Amf0Value::Object`";
 
 impl Client {
     
@@ -104,9 +135,11 @@ impl Client {
             .header(header::CONTENT_TYPE, "application/x-amf")
             .body(req_packet)
             .send()
-            .await?
+            .await
+            .map_err(|e| e.to_string())?
             .bytes()
-            .await?
+            .await
+            .map_err(|e| e.to_string())?
             .read_as()
             .map_err(|e| {
                 format!("fail to parse response as AMF packet: {}", e)
@@ -133,22 +166,20 @@ impl Client {
             .first()
             .ok_or("response packet body is empty.")?;
 
-        if let Value::Amf0(Amf0Value::Object{entries, ..}) = data {
-            let entries = entries.into_iter()
-                .map(|p| (p.key.as_str(), &p.value));
-            let data: HashMap<&str, &Amf0Value> = HashMap::from_iter(entries);
-            match data.get("now_id") {
-                None => match data.get("description")  {
-                    Some(&&Amf0Value::String(ref desc)) => Err(desc.as_str())?,
-                    _ => Err("返回数据中无所需的Number'now_id'")?,
-                },
-                Some(&&Amf0Value::Number(now_id)) => return Ok(now_id),
-                Some(&&Amf0Value::String(ref now_id)) => return Ok(now_id.parse().unwrap()),
-                _ => Err("无法将'now_id'解析为数字")?,
-            }
+        let data = data.try_as_amf0_object().ok_or(ERR_PARSE_AMF_OBJ)?;
+
+        let now_id = data.get("now_id");
+
+        if now_id.is_none() {
+            return get_error_from_map(&data, "返回数据中无所需的Number'now_id'".into());
         }
 
-        Err("无法将返回的数据解析为`Amf0Value::Object`")?
+        match now_id.unwrap() {
+            &&Amf0Value::Number(now_id) => Ok(now_id),
+            &&Amf0Value::String(ref now_id) => Ok(now_id.parse().unwrap()),
+            _ => Err("无法将'now_id'解析为数字".into()),
+        }
+
     }
 
     pub async fn skill_up_to(
@@ -172,7 +203,7 @@ impl Client {
                     break;
                 }
                 print!("\rtry {:-3} : {}", i, new_skill_id);
-                std::io::stdout().flush()?;
+                std::io::stdout().flush().map_err(|e| format!("fail to flush stdout: {}", e))?;
             }
         }
         Ok(())
@@ -183,11 +214,15 @@ impl Client {
     /// **@return**: 刷新后的值
     pub async fn quality_up(
         &self,
+        quality_up_type: QualityUpType,
         plant_id: f64,
     ) -> Result<Quality> {
 
         let res: Packet = self.send_amf(
-            "api.apiorganism.qualityUp", 
+            match quality_up_type {
+                QualityUpType::General => "api.apiorganism.qualityUp",
+                QualityUpType::Moshen => "api.apiorganism.quality12Up",
+            }, 
             "/1",
             array(vec![number(plant_id)])
         ).await?;
@@ -203,14 +238,15 @@ impl Client {
             if let Some(Amf0Value::String(newq)) = data.get("quality_name") {
                 return Ok(newq.parse()?);
             }
-            Err("返回数据中无所需的String 'quality_name'")?;
+            return get_error_from_map(&data, "未知错误：返回数据中无'quality_name'".into());
         }
 
-        Err("无法将返回的数据解析为`Amf0Value::Object`")?
+        Err(ERR_PARSE_AMF_OBJ.into())
     }
 
     pub async fn quality_up_to(
         &self,
+        quality_up_type: QualityUpType,
         plant_id: f64,
         until: impl Fn(usize, Quality) -> bool,
     ) -> Result<()> {
@@ -220,13 +256,13 @@ impl Client {
             if i != 1 {
                 wait_a_moment().await;
             }
-            let new_quality = self.quality_up(plant_id).await?;
+            let new_quality = self.quality_up(quality_up_type, plant_id).await?;
             if pre.is_some() && new_quality != pre.unwrap() {
                 println!("\rtry {:-3} : -> {} !", i, new_quality);
             } else {
                 print!("\rtry {:-3} : {}", i, new_quality);
             }
-            std::io::stdout().flush()?;
+            std::io::stdout().flush().map_err(|e| format!("fail to flush stdout: {}", e))?;
 
             if until(i, new_quality) {
                 break;
@@ -253,13 +289,13 @@ impl Client {
         }
         let ref data = res.bodies[0].data;
 
-        let data = data.try_as_amf0_object()
-            .ok_or("无法将返回的数据解析为`Amf0Value::Object`")?;
-    
-        let _ = data.get("tools")
-            .ok_or("未知错误：返回数据中无`tools`")?;
+        let data = data.try_as_amf0_object().ok_or(ERR_PARSE_AMF_OBJ)?;
 
-        Ok(())
+        if data.get("tools").is_some() {
+            return Ok(());
+        }
+
+        get_error_from_map(&data, "未知错误：返回数据中无`tools`".into())
     }
 
     pub async fn open_box_repeat(
@@ -268,16 +304,17 @@ impl Client {
         amount: u32,
         repeat: usize,
     ) -> Result<()> {
+        println!("warning: 提示信息有待优化");
         for i in 1..=repeat {
             if i != 1 {
                 wait_a_moment().await;
             }
             self.open_box(box_id, amount).await?;
-            
+            println!("\rNo.{:-4 } 成功开启{}个", i, amount);
         }
+        println!("共开启{}个", amount as usize * repeat);
         Ok(())
     }
-
 
     pub async fn get_duty_reward(
         &self,
@@ -294,20 +331,13 @@ impl Client {
             .first()
             .ok_or("response packet body is empty.")?;
 
-        if let Value::Amf0(Amf0Value::Object{entries, ..}) = data {
-            let entries = entries.into_iter()
-                .map(|p| (p.key.as_str(), &p.value));
-            let data: HashMap<&str, &Amf0Value> = HashMap::from_iter(entries);
-            if let Some(_) = data.get("user_exp") {
-                return Ok(());
-            }
-            if let Some(Amf0Value::String(err)) = data.get("description") {
-                Err(err.as_str())?;
-            }
-            Err("未知错误：返回数据中无`user_exp`, 也无`description`")?;
+        let data = data.try_as_amf0_object().ok_or(ERR_PARSE_AMF_OBJ)?;
+
+        if data.get("user_exp").is_some() {
+            return Ok(());
         }
 
-        Err("无法将返回的数据解析为`Amf0Value::Object`")?
+        get_error_from_map(&data, "未知错误：返回数据中无`user_exp`".into())
     }
 
     pub async fn get_duty_rewards(
@@ -349,19 +379,13 @@ impl Client {
             .first()
             .ok_or("response packet body is empty.")?;
 
-        if let Value::Amf0(Amf0Value::Object{entries, ..}) = data {
-            let entries = entries.into_iter()
-                .map(|p| (p.key.as_str(), &p.value));
-            let data: HashMap<&str, &Amf0Value> = HashMap::from_iter(entries);
-            if let Some(Amf0Value::Number(next)) = data.get("next") {
-                return Ok(*next);
-            }
-            if let Some(Amf0Value::String(err)) = data.get("description") {
-                Err(err.as_str())?;
-            }
-            Err("未知错误：返回数据中无`next`")?;
+        let data = data.try_as_amf0_object().ok_or(ERR_PARSE_AMF_OBJ)?;
+
+        match data.get("next") {
+            Some(n) => n.try_as_f64().ok_or("无法将`next`解析为数字".into()),
+            None => get_error_from_map(&data, "未知错误：返回数据中无`next`".into())
         }
-        Err("无法将返回的数据解析为`Amf0Value::Object`")?
+
     }
 
     pub async fn get_fuben_reward(
@@ -380,8 +404,7 @@ impl Client {
         }
         let ref data = res.bodies[0].data;
 
-        let data = data.try_as_amf0_object()
-            .ok_or("无法将返回的数据解析为`Amf0Value::Object`")?;
+        let data = data.try_as_amf0_object().ok_or(ERR_PARSE_AMF_OBJ)?;
     
         let integral = data.get("integral")
             .ok_or("未知错误：返回数据中无`integral`")?
@@ -410,7 +433,6 @@ impl Client {
         Ok(())
     }
 
-    /// 刷取副本勋章奖励
     pub async fn reset_and_get_fuben_reward(
         &self,
         fuben_id: f64,
@@ -424,12 +446,12 @@ impl Client {
             }
             self.reset_fuben_reward(fuben_id).await?;
             print!("No.{:-3} : reset", i);
-            std::io::stdout().flush()?;
+            std::io::stdout().flush().map_err(|e| format!("fail to flush stdout: {}", e))?;
             for j in 1.. {
                 wait_a_moment().await;
                 let next = self.get_fuben_award("medal", fuben_id).await?;
                 print!(" : get-{}", j);
-                std::io::stdout().flush()?;
+                std::io::stdout().flush().map_err(|e| format!("fail to flush stdout: {}", e))?;
                 if next == 0. || next > medal as f64 {
                     println!(" : ok");
                     break;
@@ -439,42 +461,50 @@ impl Client {
         Ok(())
     }
 
-    pub async fn challenge_fuben(
+    pub(crate) async fn get_reward(&self, awards_key: &str) -> Result<()> {
+        self.send_amf(
+            "api.reward.lottery",
+            "/1",
+            array(vec![string(awards_key)]),
+        ).await?;
+        Ok(())
+    }
+
+    pub async fn challenge(
         &self,
-        fuben_id: f64,
+        challenge_type: ChallengeType,
+        challenge_id: f64,
         plant_ids: impl Iterator<Item = f64>,
     ) -> Result<bool> {
+        let target_uri = ChallengeType::get_amf_target(&challenge_type);
         let plant_ids = plant_ids.map(number).collect();
         let res = self.send_amf(
-            "api.fuben.challenge",
+            target_uri,
             "/1",
-            array(vec![number(fuben_id), array(plant_ids)]),
+            array(vec![number(challenge_id), array(plant_ids)]),
         ).await?;
 
         let Body { data, .. } = res.bodies
             .first()
             .ok_or("response packet body is empty.")?;
 
-        if let Value::Amf0(Amf0Value::Object{entries,..}) = data {
-            let entries = entries.into_iter()
-                .map(|p| (p.key.as_str(), &p.value));
-            let data: HashMap<&str, &Amf0Value> = HashMap::from_iter(entries);
-            let win = 
-                if let Some(Amf0Value::Boolean(win)) = data.get("is_winning") {
-                    win.to_owned()
-                } else {
-                    Err("未知错误：返回数据中无`is_winning`")?
-                };
-            if let Some(Amf0Value::String(awards)) = data.get("awards_key") {
-                self.send_amf(
-                    "api.reward.lottery",
-                    "/1",
-                    array(vec![string(awards)]),
-                ).await?;
-            }
-            return Ok(win);
+        let data = data.try_as_amf0_object().ok_or(ERR_PARSE_AMF_OBJ)?;
+
+        let win = data.get("is_winning");
+
+        if let Some(win) = win {
+            win.try_as_bool().ok_or("无法将`is_winning`解析为bool")?;
+
+            let awards_key = data.get("awards_key")
+                .ok_or("返回数据中无`awards_key`")?
+                .try_as_str()
+                .ok_or("无法将`awards_key`解析为&str")?;
+
+            self.get_reward(awards_key).await?;
         }
-        Err("无法将返回的数据解析为`Amf0Value::Object`")?
+
+        get_error_from_map(&data, "返回数据中无`is_winning`".into())
+
     }
 
     pub async fn challenge_fuben_repeat(
@@ -483,18 +513,35 @@ impl Client {
         plant_ids: Vec<f64>,
         times: usize,
     ) -> Result<()> {
+        use ChallengeType::*;
+
         for i in 1..=times {
             if i != 1 {
                 wait_a_moment().await;
             }
             let plant_ids = plant_ids.iter().map(ToOwned::to_owned);
-            let win = self.challenge_fuben(fuben_id, plant_ids).await?;
+            let win = self.challenge(Fuben, fuben_id, plant_ids).await?;
             println!("repeat {:-3} : win={}", i, win);
         }
         Ok(())
     }
 
 
+}
+
+fn get_error_from_map<T>(data: &HashMap<&str,&Amf0Value>, or: ErrorKind) -> Result<T> {
+    let error = data.get("desctiption").and_then(|e| e.try_as_str());
+
+    Err(if error.is_some() {
+        let error = error.unwrap();
+        if error.is_ascii() {
+            or // 替换为更友好的错误信息
+        } else {
+            error.to_owned().into()
+        }
+    } else {
+        or
+    })
 }
 
 pub struct ClientBuilder {

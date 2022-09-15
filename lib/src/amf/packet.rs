@@ -71,7 +71,7 @@ impl<'a> Packet<'a> {
     }
 
     pub fn read_from<'s,T: Buf>(src: &'s mut T) -> Result<Packet<'s>> {
-        src.read_as()
+        src.read_as().map_err(|e: Box<dyn std::error::Error>| e.to_string().into())
     }
 
 }

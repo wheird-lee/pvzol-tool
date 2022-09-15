@@ -132,6 +132,35 @@ impl FromStr for Quality {
     }
 }
 
+pub enum ChallengeType {
+    /// 副本
+    Fuben,
+
+    /// 宝石副本
+    Stone,
+
+}
+
+impl ChallengeType {
+    pub fn get_amf_target(challenge_type: &ChallengeType) -> &'static str {
+        use ChallengeType::*;
+
+        match challenge_type {
+            Fuben => "api.fuben.challenge",
+            Stone => "api.stone.challenge",            
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QualityUpType {
+    /// 使用品质刷新书
+    General,
+    
+    /// 使用魔神刷新书
+    Moshen,
+}
+
 pub trait GetSysInfo {
     // http://s36.youkia.pvz.youkia.com/pvz/php_xml/tool.xml?1660639233132
     fn get_tools(&self) -> Vec<Tool>;

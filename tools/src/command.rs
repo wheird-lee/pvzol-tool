@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
 use clap::{Subcommand};
-use lib::{game::sys::Quality, Client, Result};
+use lib::{game::sys::{Quality, QualityUpType}, Client, Result};
 
 macro_rules! warn_ignored {
     ($lit:literal) => {
-        eprintln!("warn: option `{}` is ignored.", $lit)
+        eprintln!("warning: option `{}` is ignored.", $lit)
     };
 }
 
@@ -18,6 +18,10 @@ pub(crate) enum Command {
         /// 目标品质
         #[clap(long, value_parser)]
         until: Option<Quality>,
+
+        /// 使用魔神刷新书
+        #[clap(short, long, action)]
+        moshen: bool,
 
         /// 植物Id
         #[clap(value_parser, required = true)]
@@ -45,17 +49,25 @@ pub(crate) enum Command {
         #[clap(value_parser)]
         box_id: f64,
 
-        /// 开启数量
-        #[clap(value_parser = clap::value_parser!(u32).range(1..=10))]
+        /// 需要开启的数量
+        #[clap(value_parser)]
         amount: Option<u32>,
     },
 
     /// 自动挑战洞穴/副本, 并领取奖励
     Challenge {
 
-        /// 副本关卡Id
+        /// 世界副本
+        #[clap(short = 'f', long = "fuben", action)]
+        is_fuben: bool,
+
+        /// 宝石副本
+        #[clap(short = 's', long = "stone", action)]
+        is_stone: bool,
+
+        /// 关卡Id
         #[clap(value_parser)]
-        fuben_id: f64,
+        id: f64,
 
         /// 出战植物Id
         #[clap(value_parser)]
@@ -98,11 +110,22 @@ impl Command {
         use Command::*;
 
         let repeat_times = repeat.unwrap_or(1) as usize;
+
         match self {
             QualityUp {
                 plant_id: plant_ids,
-                until
+                until,
+                moshen,
             } => {
+                let (until, quality_up_type) = match moshen {
+                    true => {
+                        if until.is_some() {
+                            eprintln!("warning: 使用魔神刷新书, 参数`--until`已忽略");
+                        }
+                        (Some(Quality::魔神), QualityUpType::Moshen)
+                    },
+                    false => (until, QualityUpType::General),
+                };
                 let until_fn: Box<dyn Fn(usize,Quality)->bool> = match until {
                     Some(to_quality) => {
                         if repeat.is_some() {
@@ -113,14 +136,14 @@ impl Command {
                     None => Box::new(move |i,_| i >= repeat_times),
                 };
                 for plant_id in plant_ids {
-                    client.quality_up_to(plant_id, &until_fn).await?;
+                    client.quality_up_to(quality_up_type, plant_id, &until_fn).await?;
                 }
             },
             SkillUp {
                 plant_id,
                 skill_id,
                 up_level
-            } =>{
+            } => {
                 let until: Box<dyn Fn(usize,u32)->bool> = match up_level {
                     Some(up) => {
                         if repeat.is_some() {
@@ -134,10 +157,22 @@ impl Command {
             },
             Open { box_id, amount } => {
                 let amount = amount.unwrap_or(1);
+                if amount == 0 {
+                    return Err("单次开启数量必须大于1且小于11".into());
+                } else if amount > 10 {
+                    return Err("单次开启数量必须小于11, 如果想开启多个, 请使用`--repeat`参数".into());
+                }
                 client.open_box_repeat(box_id, amount, repeat_times).await?;
             },
-            Challenge { fuben_id, plant_ids } => {
-                client.challenge_fuben_repeat(fuben_id, plant_ids, repeat_times).await?;
+            Challenge {is_fuben, is_stone, id: fuben_id, plant_ids } => {
+                if is_fuben {
+                    client.challenge_fuben_repeat(fuben_id, plant_ids, repeat_times).await?;
+                } else if is_stone {
+                    // compile_error!("unimplement");
+                    return Err("该功能未完成".into());
+                } else {
+                    return Err("未给定挑战类型.(公洞/个洞/按洞/副本/...)".into());
+                }
             },
             #[cfg(feature = "hack")]
             Hack(hack) => {

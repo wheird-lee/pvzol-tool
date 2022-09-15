@@ -18,6 +18,14 @@ pub trait TryAsNumber {
     fn try_as_number(&self) -> Option<f64>;
 }
 
+pub trait TryAsBoolean {
+    fn try_as_bool(&self) -> Option<bool>;
+}
+
+pub trait TryAsStr {
+    fn try_as_str(&self) -> Option<&str>;
+}
+
 impl TryIntoAmf0Object for Value {
     fn try_into_amf0_object(self) -> Option<HashMap<String, Amf0Value>> {
         if let Value::Amf0(Amf0Value::Object{entries,..}) = self {
@@ -55,6 +63,24 @@ impl TryAsNumber for Amf0Value {
     fn try_as_number(&self) -> Option<f64> {
         if let Amf0Value::Number(num)= self {
             return Some(*num);
+        }
+        None
+    }
+}
+
+impl TryAsBoolean for Amf0Value {
+    fn try_as_bool(&self) -> Option<bool> {
+        if let Amf0Value::Boolean(b)= self {
+            return Some(*b);
+        }
+        None
+    }
+}
+
+impl TryAsStr for Amf0Value {
+    fn try_as_str(&self) -> Option<&str> {
+        if let Amf0Value::String(s)= self {
+            return Some(s.as_str());
         }
         None
     }
@@ -106,7 +132,7 @@ mod test {
     }
 
     #[test]
-    fn test_deser() -> crate::Result<()>{
+    fn test_deser() -> crate::Result<(), Box<dyn std::error::Error>>{
         let mut req = Bytes::from_static(include_bytes!("../test_req.amf"));
         let packet: Packet = req.read_as()?;
         println!("Request Packet:\n {:?}\n\n", packet);

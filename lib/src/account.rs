@@ -13,11 +13,11 @@ pub struct AccountInfo {
 
 impl AccountInfo {
     pub async fn from_file(file_name: impl AsRef<Path>) -> Result<AccountInfo> {
-        let file_content = read(file_name).await?;
+        let file_content = read(file_name).await.map_err(|e| e.to_string())?;
         AccountInfo::from_bytes(file_content.as_slice())
     }
 
     pub fn from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<AccountInfo> {
-        Ok(toml::from_slice(bytes.as_ref())?)
+        toml::from_slice(bytes.as_ref()).map_err(|e| e.to_string().into())
     }
 }

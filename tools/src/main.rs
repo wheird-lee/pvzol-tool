@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use clap::{AppSettings, ArgGroup, Parser};
 use command::Command;
-use lib::{Client, AccountInfo, Result};
+use lib::{Client, AccountInfo, Result, ErrorKind};
 
 mod command;
 
@@ -44,17 +44,22 @@ struct Cli {
     command: Command,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    if let Err(e) = main_wrapped().await {
+        println!("error: {}", e)
+    }
+}
 
+async fn main_wrapped() -> Result<(), ErrorKind> {
     let cli = Cli::parse();
 
     let config_file = cli.config
         .or(cli.user.map(Into::into))
-        .expect("必须给定用户信息");
+        .ok_or("必须给定用户信息")?;
 
     if !config_file.exists() {
-        panic!("找不到给定的配置文件\"{:?}\"", config_file.as_os_str());
+        return  Err(format!("找不到给定的配置文件\"{:?}\"", config_file.as_os_str()).into());
     }
 
     let client = Client::builder()

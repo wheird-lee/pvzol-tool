@@ -1,11 +1,11 @@
 [package]
 name = "pvzol-tools-lib"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["wheird"]
 
 [dependencies]
-lib-macro = { package = "lib-macro", path = "../lib-macro"}
+# lib-macro = { package = "lib-macro", path = "../lib-macro"}
 
 amf = "1.0"
 bytes = "1.2"
@@ -14,6 +14,6 @@ quick-xml = "0.23"
 rand = "0.8 "
 reqwest = {version = "0.11", features = []}
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1", features = [ "full" ]}
+tokio = { version = "1", features = []}
 toml = "0.5.9"
 try_buf = "0.1"
